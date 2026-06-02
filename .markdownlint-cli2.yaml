@@ -1,2 +1,7 @@
+globs:
+  - "**/*.md"
+  - "!node_modules"
+  - "!docs"
+  - "!coverage"
 config:
   extends: "@drod3763/markdownlint-config"
