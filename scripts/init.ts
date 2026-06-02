@@ -41,7 +41,7 @@ export const transformMonoPackageJson = (
   pkg: PackageJson,
   name: string,
 ): PackageJson => {
-  const { init: _init, build: _build, ...scripts } = pkg.scripts;
+  const { init: _init, ...scripts } = pkg.scripts;
   const { exports: _exports, files: _files, version: _version, ...rest } = pkg;
   return {
     ...rest,
