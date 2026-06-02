@@ -117,7 +117,7 @@ describe("transformAppPackageJson", () => {
   it("adds bin field for cli", () => {
     const result = transformAppPackageJson(BASE_PKG, "my-cli", "cli");
     expect(result).toHaveProperty("bin");
-    expect(result.bin["my-cli"]).toBe("./dist/index.js");
+    expect(result.bin!["my-cli"]).toBe("./dist/index.js");
   });
 
   it("removes the init script", () => {
