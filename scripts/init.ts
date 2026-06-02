@@ -234,8 +234,10 @@ const scaffoldMono = (pkgName: string): void => {
   writeFileSync(".github/workflows/publish.yml", patched);
 };
 
-const scaffoldApp = (subtype: AppSubtype): void => {
-  rmSync(".github/workflows/publish.yml");
+const scaffoldApp = (subtype: AppSubtype, asAction = false): void => {
+  if (!asAction) {
+    rmSync(".github/workflows/publish.yml");
+  }
 
   if (subtype === "cli") {
     const entry = readFileSync("src/index.ts", "utf-8");
@@ -243,13 +245,145 @@ const scaffoldApp = (subtype: AppSubtype): void => {
   }
 };
 
+const scaffoldAction = (name: string): void => {
+  // Write action.yml (node24, ncc-bundled)
+  const actionName = basename(name);
+  writeFileSync(
+    "action.yml",
+    `name: "${actionName}"
+description: "TODO: describe what this action does"
+inputs:
+  who:
+    description: "Name to greet"
+    required: false
+    default: "world"
+outputs:
+  greeting:
+    description: "The greeting output"
+runs:
+  using: "node20"
+  main: "dist/index.js"
+`,
+  );
+
+  // Overwrite src/index.ts with @actions/core entry
+  writeFileSync(
+    "src/index.ts",
+    `import * as core from "@actions/core";
+
+export const run = (who: string): string => \`Hello, \${who}!\`;
+
+if (import.meta.url === \`file://\${process.argv[1]}\`) {
+  const who = core.getInput("who") || "world";
+  core.setOutput("greeting", run(who));
+}
+`,
+  );
+
+  // Overwrite src/index.test.ts
+  writeFileSync(
+    "src/index.test.ts",
+    `import { describe, expect, it } from "vitest";
+import { run } from "./index.js";
+
+describe("run", () => {
+  it("greets the given input", () => {
+    expect(run("world")).toBe("Hello, world!");
+  });
+});
+`,
+  );
+
+  // Delete publish.yml — actions aren't published to npm
+  rmSync(".github/workflows/publish.yml");
+
+  // Remove dist/ from .gitignore — Actions require committed dist/
+  const gitignore = readFileSync(".gitignore", "utf-8");
+  writeFileSync(
+    ".gitignore",
+    gitignore
+      .split("\n")
+      .filter((line) => line.trim() !== "dist/")
+      .join("\n"),
+  );
+};
+
+const scaffoldCliAction = (name: string): void => {
+  const actionName = basename(name);
+  // Write composite action.yml — invokes the published CLI via bunx
+  writeFileSync(
+    "action.yml",
+    `name: "${actionName}"
+description: "TODO: describe what this CLI action does"
+inputs:
+  args:
+    description: "Arguments passed to the CLI"
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: bunx ${name} \${{ inputs.args }}
+`,
+  );
+  // publish.yml is kept (cli is published to npm)
+  // dist/ stays gitignored (composite action doesn't need committed dist)
+};
+
 // ─── README generation ────────────────────────────────────────────────────────
 
 const generateReadme = (name: string, type: ProjectType): string => {
-  const publish =
+  let publishSection = "";
+  if (type === "lib" || type === "mono") {
+    publishSection = `
+## Publishing
+
+**First publish (once, locally):**
+
+\`\`\`bash
+bun run build
+bun pm pack
+npm publish *.tgz --access public
+rm *.tgz
+\`\`\`
+
+**Ongoing (trusted, no token):**
+
+1. On npmjs.com → package → Settings → Trusted Publishing → add GitHub Actions for this repo, workflow \`publish.yml\`.
+2. Bump version in \`package.json\`.
+3. Open a PR from a \`release/vX.Y.Z\` branch → merge to \`main\`.
+`;
+  } else if (type === "action") {
+    publishSection = `
+## Releasing
+
+After making changes, build and commit the bundle, then tag:
+
+\`\`\`bash
+bun run build
+git add dist/
+git commit -m "build: bundle action"
+git tag -f v1
+git push -f origin v1
+\`\`\`
+
+Consumers reference this action as \`uses: <owner>/${name}@v1\`.
+`;
+  }
+
+  const cliActionSection =
     type === "app"
-      ? ""
-      : `\n## Publishing\n\nOpen a PR from a branch named \`release/vX.Y.Z\`. Merging it to \`main\` triggers \`publish.yml\`.\n\nRequires \`NPM_TOKEN\` secret (Settings → Secrets → Actions).\n`;
+      ? `
+## Using as a GitHub Action
+
+\`\`\`yaml
+- uses: <owner>/${name}@v1
+  with:
+    args: "--help"
+\`\`\`
+`
+      : "";
 
   return `# ${name}
 
@@ -275,8 +409,7 @@ All PRs to \`main\` run six required checks via GitHub Actions:
 commitlint, format-check, lint, markdownlint, test, typecheck.
 
 **Branch protection:** enable on \`main\`, mark all six jobs as required status checks.
-${publish}
-`;
+${publishSection}${cliActionSection}`;
 };
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
@@ -284,14 +417,27 @@ ${publish}
 const main = (): void => {
   console.log("\n🚀 TypeScript Project Scaffolder\n");
 
-  const type = choose<ProjectType>("Project type:", ["lib", "mono", "app"]);
-  const subtype: AppSubtype =
-    type === "app"
-      ? choose<AppSubtype>("App subtype:", ["server", "cli"])
-      : "server";
+  const type = choose<ProjectType>("Project type:", [
+    "lib",
+    "mono",
+    "app",
+    "action",
+  ]);
+
+  let subtype: AppSubtype = "server";
+  let asAction = false;
+
+  if (type === "app") {
+    subtype = choose<AppSubtype>("App subtype:", ["server", "cli"]);
+    if (subtype === "cli") {
+      const ans = ask("Also expose as a GitHub Action? (y/N)", "N");
+      asAction = ans.toLowerCase().startsWith("y");
+    }
+  }
 
   const dirName = basename(process.cwd());
-  const defaultName = type === "app" ? dirName : `@scope/${dirName}`;
+  const defaultName =
+    type === "app" || type === "action" ? dirName : `@scope/${dirName}`;
   const name = ask("Package name", defaultName);
 
   let pkg: PackageJson;
@@ -305,12 +451,15 @@ const main = (): void => {
   let newPkg: PackageJson;
   if (type === "lib") newPkg = transformLibPackageJson(pkg, name);
   else if (type === "mono") newPkg = transformMonoPackageJson(pkg, name);
-  else newPkg = transformAppPackageJson(pkg, name, subtype);
+  else if (type === "action") newPkg = transformActionPackageJson(pkg, name);
+  else newPkg = transformAppPackageJson(pkg, name, subtype, asAction);
 
   writeFileSync("package.json", JSON.stringify(newPkg, null, 2) + "\n");
 
   if (type === "mono") scaffoldMono(name);
-  if (type === "app") scaffoldApp(subtype);
+  if (type === "app") scaffoldApp(subtype, asAction);
+  if (type === "action") scaffoldAction(name);
+  if (type === "app" && subtype === "cli" && asAction) scaffoldCliAction(name);
 
   writeFileSync("README.md", generateReadme(name, type));
 
