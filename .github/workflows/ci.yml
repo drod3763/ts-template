@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  commitlint:
+    uses: drod3763/configs/.github/workflows/commitlint.yml@main
+    with:
+      base-sha: ${{ github.event.pull_request.base.sha }}
+      head-sha: ${{ github.event.pull_request.head.sha }}
+
+  format-check:
+    uses: drod3763/configs/.github/workflows/format-check.yml@main
+
+  lint:
+    uses: drod3763/configs/.github/workflows/lint.yml@main
+
+  markdownlint:
+    uses: drod3763/configs/.github/workflows/markdownlint.yml@main
+
+  test:
+    uses: drod3763/configs/.github/workflows/test.yml@main
+
+  typecheck:
+    uses: drod3763/configs/.github/workflows/typecheck.yml@main
