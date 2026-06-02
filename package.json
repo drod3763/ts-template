@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "init": "bun scripts/init.ts",
-    "build": "tsc --project tsconfig.json",
+    "build": "tsc --project tsconfig.build.json",
     "test": "vitest run --coverage",
     "lint": "eslint .",
     "format": "prettier --write .",
