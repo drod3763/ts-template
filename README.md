@@ -15,7 +15,7 @@ by six required CI checks.
    bun run init
    ```
 
-   Answer the prompts (lib / mono / app). The scaffolder rewrites `package.json`,
+   Answer the prompts (lib / mono / app / action). The scaffolder rewrites `package.json`,
    adjusts the file layout, and removes itself.
 
 4. Commit the scaffolded state:
@@ -28,23 +28,51 @@ by six required CI checks.
 5. Push and set up branch protection on `main`:
    - Required status checks: `commitlint`, `format-check`, `lint`, `markdownlint`, `test`, `typecheck`
 
-6. For **lib** or **mono**: add `NPM_TOKEN` secret (Settings → Secrets → Actions).
+6. For **lib** or **mono**: set up trusted publishing (see Publishing section below).
 
 ## Project types
 
-| Type   | Description                                      |
-| ------ | ------------------------------------------------ |
-| `lib`  | Publishable single-package library               |
-| `mono` | Workspace monorepo with synchronized versioning  |
-| `app`  | Server or CLI application (not published to npm) |
+| Type     | Description                                            |
+| -------- | ------------------------------------------------------ |
+| `lib`    | Publishable single-package library                     |
+| `mono`   | Workspace monorepo with synchronized versioning        |
+| `app`    | Server or CLI application (optionally a GitHub Action) |
+| `action` | Standalone GitHub Action (node20, ncc-bundled)         |
 
-## Publishing (lib / mono)
+## Publishing — lib / mono
 
-Create a PR from a branch named `release/vX.Y.Z`. Merging to `main` triggers
-`publish.yml`, which runs `bun publish` (lib) or publishes each `packages/*` (mono).
+### First publish (bootstrap, once locally)
 
-Requires `NPM_TOKEN` secret. For a private registry, update `registry-url` in
-`.github/workflows/publish.yml`.
+Trusted publishing requires the package to already exist on npm.
+
+```bash
+bun run build
+bun pm pack
+npm publish *.tgz --access public
+rm *.tgz
+```
+
+### Ongoing (trusted publishing, no token)
+
+1. On npmjs.com → your package → **Settings** → **Trusted Publishing** → add:
+   - Publisher: GitHub Actions
+   - Repository: `owner/repo`
+   - Workflow: `publish.yml`
+2. Bump version in `package.json`.
+3. Open a PR from a `release/vX.Y.Z` branch → merge to `main`.
+4. `publish.yml` runs `npm publish --provenance` via OIDC. No token needed.
+
+## Releasing — action type
+
+```bash
+bun run build
+git add dist/
+git commit -m "build: bundle action"
+git tag -f v1
+git push -f origin v1
+```
+
+Consumers reference the action as `uses: owner/repo@v1`.
 
 ## CI checks
 
