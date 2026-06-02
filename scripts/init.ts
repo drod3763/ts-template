@@ -208,10 +208,17 @@ const scaffoldMono = (pkgName: string): void => {
     name: `${pkgName}/example`,
     version: "0.0.0",
     type: "module",
-    exports: { ".": "./src/index.ts" },
+    main: "./dist/index.js",
+    types: "./dist/index.d.ts",
+    exports: {
+      ".": {
+        types: "./dist/index.d.ts",
+        import: "./dist/index.js",
+      },
+    },
     files: ["dist"],
     scripts: {
-      build: "tsc --project tsconfig.json",
+      build: "tsc --project tsconfig.build.json",
       test: "vitest run --coverage",
     },
   };
@@ -221,16 +228,9 @@ const scaffoldMono = (pkgName: string): void => {
   );
 
   const publishYml = readFileSync(".github/workflows/publish.yml", "utf-8");
-  const patched = publishYml.replace(
-    /      - name: Publish\n        run: bun publish --access public\n        env:\n          NODE_AUTH_TOKEN: \$\{\{ secrets\.NPM_TOKEN \}\}\n/,
-    `      - name: Publish all packages
-        run: |
-          for d in packages/*/; do
-            (cd "$d" && bun publish --access public)
-          done
-        env:
-          NODE_AUTH_TOKEN: \${{ secrets.NPM_TOKEN }}\n`,
-  );
+  const OLD_STEP = `      - name: Publish\n        run: |\n          bun pm pack\n          bunx npm publish *.tgz --access public --provenance\n          rm *.tgz`;
+  const NEW_STEP = `      - name: Publish all packages\n        run: |\n          for d in packages/*/; do\n            (cd "$d" && bun pm pack && bunx npm publish *.tgz --access public --provenance && rm *.tgz)\n          done`;
+  const patched = publishYml.replace(OLD_STEP, NEW_STEP);
   writeFileSync(".github/workflows/publish.yml", patched);
 };
 
