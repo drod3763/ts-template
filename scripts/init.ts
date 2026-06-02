@@ -125,6 +125,7 @@ export const transformActionPackageJson = (
       "@vercel/ncc": "^0.38.0",
     },
     dependencies: {
+      ...(pkg.dependencies ?? {}),
       "@actions/core": "^1.11.0",
     },
   };
