@@ -122,6 +122,18 @@ const scaffoldMono = (pkgName: string): void => {
     /* already empty */
   }
 
+  // Patch tsconfig.json: replace "src" include with "packages"
+  const tsconfig = JSON.parse(readFileSync("tsconfig.json", "utf-8")) as {
+    include?: string[];
+    [key: string]: unknown;
+  };
+  if (Array.isArray(tsconfig.include)) {
+    tsconfig.include = tsconfig.include.map((p) =>
+      p === "src" ? "packages" : p,
+    );
+  }
+  writeFileSync("tsconfig.json", JSON.stringify(tsconfig, null, 2) + "\n");
+
   const examplePkg = {
     name: `${pkgName}/example`,
     version: "0.0.0",
