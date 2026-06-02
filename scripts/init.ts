@@ -10,7 +10,7 @@ import { basename } from "path";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export type ProjectType = "lib" | "mono" | "app";
+export type ProjectType = "lib" | "mono" | "app" | "action";
 export type AppSubtype = "server" | "cli";
 
 interface PackageJson {
@@ -18,14 +18,36 @@ interface PackageJson {
   version?: string;
   private?: boolean;
   type?: string;
-  exports?: Record<string, string>;
+  exports?: Record<string, unknown>;
   files?: string[];
   bin?: Record<string, string>;
   workspaces?: string[];
+  main?: string;
+  types?: string;
+  dependencies?: Record<string, string>;
   scripts: Record<string, string>;
   devDependencies: Record<string, string>;
   [key: string]: unknown;
 }
+
+// ─── Shared dist field set ────────────────────────────────────────────────────
+
+const DIST_FIELDS: {
+  main: string;
+  types: string;
+  exports: Record<string, unknown>;
+  files: string[];
+} = {
+  main: "./dist/index.js",
+  types: "./dist/index.d.ts",
+  exports: {
+    ".": {
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+    },
+  },
+  files: ["dist"],
+};
 
 // ─── Pure transforms (exported for tests) ─────────────────────────────────────
 
@@ -34,7 +56,7 @@ export const transformLibPackageJson = (
   name: string,
 ): PackageJson => {
   const { init: _init, ...scripts } = pkg.scripts;
-  return { ...pkg, name, scripts };
+  return { ...pkg, name, scripts, ...DIST_FIELDS };
 };
 
 export const transformMonoPackageJson = (
@@ -56,11 +78,23 @@ export const transformAppPackageJson = (
   pkg: PackageJson,
   name: string,
   subtype: AppSubtype,
+  asAction = false,
 ): PackageJson => {
   const { init: _init, ...scripts } = pkg.scripts;
   const { exports: _exports, files: _files, version: _version, ...rest } = pkg;
 
   scripts["start"] = "bun run src/index.ts";
+
+  if (asAction && subtype === "cli") {
+    const result: PackageJson = {
+      ...rest,
+      name,
+      scripts,
+      ...DIST_FIELDS,
+      bin: { [basename(name)]: "./dist/index.js" },
+    };
+    return result;
+  }
 
   const result: PackageJson = { ...rest, name, private: true, scripts };
 
@@ -71,17 +105,52 @@ export const transformAppPackageJson = (
   return result;
 };
 
+export const transformActionPackageJson = (
+  pkg: PackageJson,
+  name: string,
+): PackageJson => {
+  const { init: _init, ...scripts } = pkg.scripts;
+  const { exports: _exports, files: _files, version: _version, ...rest } = pkg;
+
+  scripts["build"] =
+    "ncc build src/index.ts -o dist --source-map --license licenses.txt";
+
+  return {
+    ...rest,
+    name,
+    private: true,
+    scripts,
+    devDependencies: {
+      ...pkg.devDependencies,
+      "@vercel/ncc": "^0.38.0",
+    },
+    dependencies: {
+      "@actions/core": "^1.11.0",
+    },
+  };
+};
+
 export const generateNextSteps = (type: ProjectType): string => {
   const steps = [
     "1. Run: bun install",
     "2. Push to GitHub and enable branch protection on main",
     "   Required status checks: commitlint, format-check, lint, markdownlint, test, typecheck",
   ];
-  if (type !== "app") {
+  if (type === "action") {
     steps.push(
-      "3. Add NPM_TOKEN secret to repo settings (Settings → Secrets → Actions)",
+      "3. Commit dist/ after building: bun run build && git add dist/ && git commit -m 'build: bundle action'",
     );
-    steps.push("4. To publish: open a PR from a branch named release/vX.Y.Z");
+    steps.push("4. Tag a release: git tag -f v1 && git push -f origin v1");
+  } else if (type !== "app") {
+    steps.push(
+      "3. First publish (once, locally): bun run build && bun pm pack && npm publish *.tgz --access public && rm *.tgz",
+    );
+    steps.push(
+      "4. Configure trusted publishing on npmjs.com → package settings → Trusted Publishing",
+    );
+    steps.push(
+      "5. To publish via CI: bump version, open a PR from release/vX.Y.Z, merge",
+    );
   }
   return steps.join("\n");
 };

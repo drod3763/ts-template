@@ -54,10 +54,13 @@ describe("transformLibPackageJson", () => {
     expect(result.devDependencies).toEqual(BASE_PKG.devDependencies);
   });
 
-  it("preserves type, exports, files", () => {
+  it("preserves type; overwrites exports and files with dist fields", () => {
     const result = transformLibPackageJson(BASE_PKG, "@org/mylib");
     expect(result.type).toBe("module");
-    expect(result.exports).toEqual({ ".": "./src/index.ts" });
+    expect((result.exports as Record<string, unknown>)["."]).toEqual({
+      types: "./dist/index.d.ts",
+      import: "./dist/index.js",
+    });
     expect(result.files).toEqual(["dist"]);
   });
 });
@@ -128,9 +131,9 @@ describe("transformAppPackageJson", () => {
 });
 
 describe("generateNextSteps", () => {
-  it("includes NPM_TOKEN for lib", () => {
+  it("includes trusted publishing info for lib", () => {
     const steps = generateNextSteps("lib");
-    expect(steps).toContain("NPM_TOKEN");
+    expect(steps).toContain("Trusted Publishing");
   });
 
   it("does not include NPM_TOKEN for app", () => {
