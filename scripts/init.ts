@@ -98,9 +98,10 @@ const choose = <T extends string>(question: string, choices: T[]): T => {
   const opts = choices.map((c, i) => `  ${i + 1}. ${c}`).join("\n");
   console.log(`\n${question}\n${opts}`);
   const raw = prompt("Choice: ");
-  const idx = parseInt(raw ?? "1") - 1;
-  const clamped = Math.max(0, Math.min(idx, choices.length - 1));
-  return choices[clamped] as T;
+  const num = parseInt(raw ?? "1", 10);
+  if (isNaN(num) || num < 1 || num > choices.length)
+    return choose(question, choices);
+  return choices[num - 1] as T;
 };
 
 // ─── Filesystem mutations ──────────────────────────────────────────────────────
@@ -211,8 +212,13 @@ const main = (): void => {
   const defaultName = type === "app" ? dirName : `@scope/${dirName}`;
   const name = ask("Package name", defaultName);
 
-  const raw = readFileSync("package.json", "utf-8");
-  const pkg = JSON.parse(raw) as PackageJson;
+  let pkg: PackageJson;
+  try {
+    pkg = JSON.parse(readFileSync("package.json", "utf-8")) as PackageJson;
+  } catch {
+    console.error("Error: could not read package.json — run from repo root.");
+    process.exit(1);
+  }
 
   let newPkg: PackageJson;
   if (type === "lib") newPkg = transformLibPackageJson(pkg, name);
