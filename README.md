@@ -76,7 +76,7 @@ Consumers reference the action as `uses: owner/repo@v1`.
 
 ## CI checks
 
-All six checks call reusable workflows from [`drod3763/configs`](https://github.com/drod3763/configs):
+All six checks call reusable workflows from [`drod3763/js-configs`](https://github.com/drod3763/js-configs):
 
 | Check          | Tool                       |
 | -------------- | -------------------------- |
